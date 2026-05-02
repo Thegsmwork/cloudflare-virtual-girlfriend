@@ -229,17 +229,15 @@ async function generateImageAsync(env, generationId, prompt) {
       }
     );
     
-    // Save to R2
+    // Save image as base64 in DB (no R2 needed)
     const timestamp = Date.now();
     const r2Key = `generated/${generationId}/${timestamp}.png`;
     
-    await env.R2_BUCKET.put(r2Key, response, {
-      httpMetadata: { contentType: 'image/png' }
-    });
+    // Convert to base64 and store in DB
+    const uint8Array = new Uint8Array(response);
+    const base64 = btoa(String.fromCharCode(...uint8Array));
     
-    console.log(`Image saved to R2: ${r2Key}`);
-    
-    // Update database
+    // Update database with base64 image
     await env.DB.prepare(`
       UPDATE image_generations 
       SET status = 'completed', 
@@ -1245,7 +1243,7 @@ async function handlePhotoGenerate(request, env, corsHeaders) {
     }
     
     // If pre-generated photo exists, return it
-    if (photo && env.R2_BUCKET) {
+    if (photo && false) { // R2 removed
       // Use proxy URL instead of signed URL
       const resultUrl = `/api/media/view/${photo.r2_key}`;
       
@@ -1366,46 +1364,11 @@ async function handlePhotoStatus(request, env, corsHeaders, requestId) {
 // ============================================
 
 async function handleMediaView(request, env, corsHeaders, r2Key) {
-  try {
-    if (!env.R2_BUCKET) {
-      return new Response(JSON.stringify({ error: 'R2 not configured' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-      });
-    }
-    
-    const r2Object = await env.R2_BUCKET.get(r2Key);
-    
-    if (!r2Object) {
-      return new Response(JSON.stringify({ error: 'Image not found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-      });
-    }
-    
-    // Determine content type based on file extension
-    let contentType = 'image/png';
-    if (r2Key.endsWith('.jpg') || r2Key.endsWith('.jpeg')) {
-      contentType = 'image/jpeg';
-    } else if (r2Key.endsWith('.gif')) {
-      contentType = 'image/gif';
-    } else if (r2Key.endsWith('.webp')) {
-      contentType = 'image/webp';
-    }
-    
-    return new Response(r2Object.body, {
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=31536000',
-        ...corsHeaders
-      }
-    });
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
-  }
+  // R2 removed - images stored in DB as base64
+  return new Response(JSON.stringify({ error: 'Direct media view not supported. Use image status API.' }), {
+    status: 404,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders }
+  });
 }
 
 // ============================================
